@@ -1,0 +1,193 @@
+"use client";
+import React from "react";
+
+import { useUpload } from "../utilities/runtime-helpers";
+
+function MainComponent() {
+  const [user, setUser] = useState(null);
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [userName, setUserName] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [upload, { loading: uploading }] = useUpload();
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchMessages = async () => {
+      const response = await fetch("/api/db/miningverse-community", {
+        method: "POST",
+        body: JSON.stringify({
+          query:
+            "SELECT * FROM `chat_messages` ORDER BY `timestamp` DESC LIMIT 100",
+        }),
+      });
+      const data = await response.json();
+      setMessages(data.reverse());
+    };
+
+    if (user) {
+      fetchMessages();
+      const interval = setInterval(fetchMessages, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  const handleLogin = async () => {
+    if (userName.trim()) {
+      await fetch("/api/db/miningverse-community", {
+        method: "POST",
+        body: JSON.stringify({
+          query: "INSERT INTO `users` (`name`, `joined_at`) VALUES (?, ?)",
+          values: [userName, new Date().toISOString()],
+        }),
+      });
+      setUser({ name: userName });
+      setShowWelcome(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (newMessage.trim()) {
+      await fetch("/api/db/miningverse-community", {
+        method: "POST",
+        body: JSON.stringify({
+          query:
+            "INSERT INTO `chat_messages` (`user_name`, `content`, `timestamp`) VALUES (?, ?, ?)",
+          values: [user.name, newMessage, new Date().toISOString()],
+        }),
+      });
+      setNewMessage("");
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const { url, error } = await upload({ file: e.target.files[0] });
+      if (error) {
+        setError(error);
+        return;
+      }
+      await fetch("/api/db/miningverse-community", {
+        method: "POST",
+        body: JSON.stringify({
+          query:
+            "INSERT INTO `chat_messages` (`user_name`, `content`, `is_image`, `timestamp`) VALUES (?, ?, ?, ?)",
+          values: [user.name, url, true, new Date().toISOString()],
+        }),
+      });
+    }
+  };
+
+  if (showWelcome) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="bg-white p-8 rounded-2xl max-w-md w-full text-center shadow-xl border border-gray-100">
+          <div className="mb-8">
+            <i className="fas fa-gem text-6xl text-[#4a90e2] mb-4"></i>
+            <h1 className="text-4xl font-bold mb-2 font-poppins text-gray-800">
+              Welcome to Miningverse
+            </h1>
+            <p className="text-gray-600 font-poppins">by Lipun</p>
+          </div>
+          <input
+            type="text"
+            name="username"
+            value={userName}
+            onChange={(e) => setUserName(e.target.value)}
+            placeholder="Enter your name"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4a90e2] text-gray-700"
+            onKeyPress={(e) => e.key === "Enter" && handleLogin()}
+          />
+          <button
+            onClick={handleLogin}
+            className="w-full bg-[#4a90e2] text-white rounded-lg py-4 font-bold hover:bg-[#357abd] transition-colors shadow-lg"
+          >
+            Join Community
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-screen bg-white flex flex-col">
+      <div className="bg-gradient-to-r from-[#4a90e2] to-[#357abd] text-white p-8 shadow-lg">
+        <div className="max-w-7xl mx-auto text-center">
+          <h2 className="text-4xl font-bold font-poppins mb-2">
+            Welcome to Miningverse Community
+          </h2>
+          <p className="text-white/90 font-poppins">Member: {user.name}</p>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-white">
+        {messages.map((msg, index) => (
+          <div
+            key={index}
+            className={`flex ${
+              msg.user_name === user.name ? "justify-end" : "justify-start"
+            }`}
+          >
+            <div
+              className={`max-w-[70%] p-4 rounded-xl shadow-sm ${
+                msg.user_name === user.name
+                  ? "bg-[#4a90e2] text-white"
+                  : "bg-gray-50 text-gray-800"
+              }`}
+            >
+              <p className="text-sm font-semibold mb-1">{msg.user_name}</p>
+              {msg.is_image ? (
+                <img
+                  src={msg.content}
+                  alt="Shared image"
+                  className="max-w-full rounded-lg mt-2"
+                />
+              ) : (
+                <p className="mt-1">{msg.content}</p>
+              )}
+              <p
+                className={`text-xs mt-2 ${
+                  msg.user_name === user.name
+                    ? "text-white/80"
+                    : "text-gray-500"
+                }`}
+              >
+                {new Date(msg.timestamp).toLocaleTimeString()}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white border-t border-gray-100 p-6 flex items-center gap-4">
+        <label className="cursor-pointer text-[#4a90e2] hover:text-[#357abd] transition-colors">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+          <i className="fas fa-image text-xl"></i>
+        </label>
+        <input
+          type="text"
+          name="message"
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Type a message"
+          className="flex-1 bg-gray-50 rounded-lg p-4 outline-none placeholder-gray-400 text-gray-700 focus:ring-2 focus:ring-[#4a90e2] border border-gray-100"
+          onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+        />
+        <button
+          onClick={handleSendMessage}
+          disabled={!newMessage.trim()}
+          className="bg-[#4a90e2] text-white p-4 rounded-full disabled:opacity-50 hover:bg-[#357abd] transition-colors"
+        >
+          <i className="fas fa-paper-plane text-xl"></i>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default MainComponent;
